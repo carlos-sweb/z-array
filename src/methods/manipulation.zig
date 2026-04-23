@@ -141,7 +141,7 @@ pub fn ManipulationMethods(comptime T: type) type {
         pub fn join(self: *const Self, separator: []const u8, allocator: Allocator) ![]u8 {
             if (self.items.items.len == 0) return try allocator.dupe(u8, "");
 
-            var list = std.ArrayList(u8){};
+            var list: std.ArrayList(u8) = .empty;
             errdefer list.deinit(allocator);
 
             joiner: {
@@ -163,7 +163,7 @@ pub fn ManipulationMethods(comptime T: type) type {
                             const str = try std.fmt.bufPrint(&buf, "{d}", .{item});
                             try list.appendSlice(allocator, str);
                         },
-                        .@"bool" => {
+                        .bool => {
                             const str = if (item) "true" else "false";
                             try list.appendSlice(allocator, str);
                         },

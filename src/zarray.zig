@@ -20,7 +20,7 @@ pub fn ZArray(comptime T: type) type {
         /// Initialize a new empty ZArray
         pub fn init(allocator: Allocator) Self {
             return .{
-                .items = std.ArrayList(T){},
+                .items = .empty,
                 .allocator = allocator,
             };
         }

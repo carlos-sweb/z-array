@@ -1,9 +1,9 @@
 # Z-Array
 
-[![Zig Version](https://img.shields.io/badge/zig-0.15-orange.svg)](https://ziglang.org/)
+[![Zig Version](https://img.shields.io/badge/zig-0.16-orange.svg)](https://ziglang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Z-Array** is a high-performance, ECMAScript-compatible dynamic array implementation written in Zig 0.15. Designed to be a core component for JavaScript engines like Bun or QuickJS, Z-Array provides a complete array API that mirrors ECMAScript specifications while leveraging Zig's powerful compile-time features and safety guarantees.
+**Z-Array** is a high-performance, ECMAScript-compatible dynamic array implementation written in Zig 0.16. Designed to be a core component for JavaScript engines like Bun or QuickJS, Z-Array provides a complete array API that mirrors ECMAScript specifications while leveraging Zig's powerful compile-time features and safety guarantees.
 
 [🇪🇸 Versión en Español](README.es.md)
 
@@ -44,7 +44,7 @@ z-array/
 
 ### Prerequisites
 
-- Zig 0.15 or higher
+- Zig 0.16 or higher
 
 ### Using in Your Project
 
@@ -85,7 +85,7 @@ const std = @import("std");
 const ZArray = @import("zarray").ZArray;
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa:std.heap.DebugAllocator(.{}) = .empty;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 

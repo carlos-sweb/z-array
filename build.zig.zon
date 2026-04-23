@@ -1,0 +1,15 @@
+.{
+    .name = .z_array,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.16.0",
+    .fingerprint = 0x4f82f393c1c69e51,
+    .description = "High-performance ECMAScript-compatible dynamic array implementation in Zig",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src/",
+        "README.md",
+        "README.es.md",
+    },
+    .dependencies = .{},
+}
