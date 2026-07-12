@@ -25,7 +25,7 @@ z-array/
 ├── src/
 │   ├── zarray.zig              # Implementación central de ZArray
 │   ├── errors.zig              # Tipos de error personalizados
-│   ├── equality.zig            # Comparación genérica Strict Equality / SameValueZero
+│   ├── (equality.strictEquals/sameValueZero/hash re-exportado de la dependencia z-equality)
 │   ├── stringify.zig           # Serialización genérica para join()/toString() (floats spec-exactos vía znumber)
 │   ├── jsvalue.zig             # indexFromNumber(): puente JS Number -> índice para embebido
 │   └── methods/
@@ -52,13 +52,15 @@ z-array/
 
 ### Dependencias
 
-Z-Array depende de [z-number](https://github.com/carlos-sweb/z-number) (mismo autor) para el formateo numérico spec-exacto y la coerción de índices — ver [Características](#características). En `build.zig.zon` se resuelve hoy como un path local hermano:
+Z-Array depende de [z-number](https://github.com/carlos-sweb/z-number) (mismo autor) para el formateo numérico spec-exacto y la coerción de índices — ver [Características](#características) — y de [z-equality](https://github.com/carlos-sweb/z-equality) para los algoritmos de Strict Equality/SameValueZero y hash de contenido (`zarray.equality` es un re-export transparente de ese paquete, extraído para que `z-value`/`z-map`/`z-set` compartan la misma implementación en vez de duplicarla). En `build.zig.zon` ambos se resuelven hoy como paths locales hermanos:
 ```zig
 .znumber = .{ .path = "../z-number" },
+.zequality = .{ .path = "../z-equality" },
 ```
-Una vez que z-number tenga un commit publicado y etiquetado que quieras fijar, cámbialo por una dependencia git:
+Una vez que tengan commits publicados y etiquetados que quieras fijar, cámbialos por dependencias git:
 ```bash
 zig fetch --save git+https://github.com/carlos-sweb/z-number.git
+zig fetch --save git+https://github.com/carlos-sweb/z-equality.git
 ```
 
 ### Requisitos Previos

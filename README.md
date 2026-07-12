@@ -25,7 +25,7 @@ z-array/
 ├── src/
 │   ├── zarray.zig              # Core ZArray implementation
 │   ├── errors.zig              # Custom error types
-│   ├── equality.zig            # Generic Strict Equality / SameValueZero comparison
+│   ├── (equality.strictEquals/sameValueZero/hash re-exported from the z-equality dependency)
 │   ├── stringify.zig           # Generic join()/toString() serialization (spec-exact floats via znumber)
 │   ├── jsvalue.zig             # indexFromNumber(): JS Number -> index bridge for engine embedding
 │   └── methods/
@@ -56,13 +56,15 @@ z-array/
 
 ### Dependencies
 
-Z-Array depends on [z-number](https://github.com/carlos-sweb/z-number) (same author) for spec-exact numeric formatting and index coercion — see [Features](#features). In `build.zig.zon`, it's currently resolved as a local sibling path:
+Z-Array depends on [z-number](https://github.com/carlos-sweb/z-number) (same author) for spec-exact numeric formatting and index coercion — see [Features](#features) — and on [z-equality](https://github.com/carlos-sweb/z-equality) for the Strict Equality/SameValueZero comparison and content-hashing algorithms (`zarray.equality` is a transparent re-export of it, extracted so `z-value`/`z-map`/`z-set` share the same implementation instead of duplicating it). In `build.zig.zon`, both are currently resolved as local sibling paths:
 ```zig
 .znumber = .{ .path = "../z-number" },
+.zequality = .{ .path = "../z-equality" },
 ```
-Once z-number has a published, tagged commit you want to pin, swap that for a git dependency instead:
+Once these have published, tagged commits you want to pin, swap them for git dependencies instead:
 ```bash
 zig fetch --save git+https://github.com/carlos-sweb/z-number.git
+zig fetch --save git+https://github.com/carlos-sweb/z-equality.git
 ```
 
 ### Using in Your Project

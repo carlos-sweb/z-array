@@ -4,7 +4,7 @@ const errors = @import("errors.zig");
 
 pub const ZArrayError = errors.ZArrayError;
 pub const ErrorContext = errors.ErrorContext;
-pub const equality = @import("equality.zig");
+pub const equality = @import("zequality");
 pub const stringify = @import("stringify.zig");
 pub const indexFromNumber = @import("jsvalue.zig").indexFromNumber;
 

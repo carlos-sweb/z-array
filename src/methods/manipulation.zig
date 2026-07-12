@@ -3,7 +3,7 @@ const Allocator = std.mem.Allocator;
 const ZArrayError = @import("../errors.zig").ZArrayError;
 const zarray_mod = @import("../zarray.zig");
 const stringify = @import("../stringify.zig");
-const equality = @import("../equality.zig");
+const equality = @import("zequality");
 
 /// Array manipulation methods (slice, splice, concat, reverse, sort, etc.)
 pub fn ManipulationMethods(comptime T: type) type {
@@ -333,7 +333,7 @@ pub fn ManipulationMethods(comptime T: type) type {
                 var seen = std.HashMap(
                     T,
                     void,
-                    equality.ZArrayHashContext(T),
+                    equality.HashContext(T),
                     std.hash_map.default_max_load_percentage,
                 ).init(self.allocator);
                 defer seen.deinit();

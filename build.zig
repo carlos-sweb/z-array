@@ -8,12 +8,15 @@ pub fn build(b: *std.Build) void {
     // the way V8/QuickJS share value-conversion code between Array and Number.
     const znumber_dep = b.dependency("znumber", .{ .target = target, .optimize = optimize });
     const znumber_module = znumber_dep.module("znumber");
+    const zequality_dep = b.dependency("zequality", .{ .target = target, .optimize = optimize });
+    const zequality_module = zequality_dep.module("zequality");
 
     // Create a module for the library
     const zarray_module = b.addModule("zarray", .{
         .root_source_file = b.path("src/zarray.zig"),
     });
     zarray_module.addImport("znumber", znumber_module);
+    zarray_module.addImport("zequality", zequality_module);
 
     // Test setup
     const test_step = b.step("test", "Run all tests");
@@ -40,6 +43,7 @@ pub fn build(b: *std.Build) void {
 
         unit_tests.root_module.addImport("zarray", zarray_module);
         unit_tests.root_module.addImport("znumber", znumber_module);
+        unit_tests.root_module.addImport("zequality", zequality_module);
 
         const run_unit_tests = b.addRunArtifact(unit_tests);
         test_step.dependOn(&run_unit_tests.step);
@@ -54,6 +58,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     zarray_tests.root_module.addImport("znumber", znumber_module);
+    zarray_tests.root_module.addImport("zequality", zequality_module);
 
     const run_zarray_tests = b.addRunArtifact(zarray_tests);
     test_step.dependOn(&run_zarray_tests.step);

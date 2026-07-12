@@ -1,6 +1,6 @@
 const std = @import("std");
 const ZArrayError = @import("../errors.zig").ZArrayError;
-const equality = @import("../equality.zig");
+const equality = @import("zequality");
 
 /// Search methods (find, indexOf, includes, some, every, etc.)
 pub fn SearchMethods(comptime T: type) type {
