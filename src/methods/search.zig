@@ -1,12 +1,13 @@
 const std = @import("std");
 const ZArrayError = @import("../errors.zig").ZArrayError;
+const equality = @import("../equality.zig");
 
 /// Search methods (find, indexOf, includes, some, every, etc.)
 pub fn SearchMethods(comptime T: type) type {
     return struct {
         const Self = @import("../zarray.zig").ZArray(T);
 
-        /// ECMAScript indexOf() - Find first index of element using labeled switch
+        /// ECMAScript indexOf() - Find first index of element using Strict Equality Comparison
         pub fn indexOf(self: *const Self, value: T, from_index: ?usize) ?usize {
             const start = from_index orelse 0;
             if (start >= self.items.items.len) return null;
@@ -15,27 +16,14 @@ pub fn SearchMethods(comptime T: type) type {
                 if (self.items.items.len == 0) break :searcher;
 
                 for (self.items.items[start..], start..) |item, i| {
-                    // Use compile-time check for comparison method
-                    const found = comptime blk: {
-                        const type_info = @typeInfo(T);
-                        break :blk switch (type_info) {
-                            .int, .float, .bool => true,
-                            else => false,
-                        };
-                    };
-
-                    if (found) {
-                        if (std.meta.eql(item, value)) return i;
-                    } else {
-                        if (item == value) return i;
-                    }
+                    if (equality.strictEquals(T, item, value)) return i;
                 }
             }
 
             return null;
         }
 
-        /// ECMAScript lastIndexOf() - Find last index of element
+        /// ECMAScript lastIndexOf() - Find last index of element using Strict Equality Comparison
         pub fn lastIndexOf(self: *const Self, value: T, from_index: ?usize) ?usize {
             if (self.items.items.len == 0) return null;
 
@@ -45,21 +33,7 @@ pub fn SearchMethods(comptime T: type) type {
                 var i = start + 1;
                 while (i > 0) {
                     i -= 1;
-                    const item = self.items.items[i];
-
-                    const found = comptime blk: {
-                        const type_info = @typeInfo(T);
-                        break :blk switch (type_info) {
-                            .int, .float, .bool => true,
-                            else => false,
-                        };
-                    };
-
-                    if (found) {
-                        if (std.meta.eql(item, value)) return i;
-                    } else {
-                        if (item == value) return i;
-                    }
+                    if (equality.strictEquals(T, self.items.items[i], value)) return i;
                 }
                 break :searcher;
             }
@@ -67,9 +41,17 @@ pub fn SearchMethods(comptime T: type) type {
             return null;
         }
 
-        /// ECMAScript includes() - Check if array contains element
+        /// ECMAScript includes() - Check if array contains element using SameValueZero
+        /// (NaN equals NaN, unlike indexOf's Strict Equality Comparison — cannot delegate to indexOf).
         pub fn includes(self: *const Self, value: T, from_index: ?usize) bool {
-            return self.indexOf(value, from_index) != null;
+            const start = from_index orelse 0;
+            if (start >= self.items.items.len) return false;
+
+            for (self.items.items[start..]) |item| {
+                if (equality.sameValueZero(T, item, value)) return true;
+            }
+
+            return false;
         }
 
         /// ECMAScript find() - Find first element that satisfies predicate using labeled switch
@@ -206,7 +188,9 @@ pub fn SearchMethods(comptime T: type) type {
             return null;
         }
 
-        /// Count occurrences of a value
+        /// Count occurrences of a value. Not part of ECMA262; uses Strict Equality
+        /// Comparison for consistency with indexOf/lastIndexOf. Use countIf for
+        /// SameValueZero semantics (e.g. NaN-inclusive counting).
         pub fn count(self: *const Self, value: T) usize {
             var n: usize = 0;
 
@@ -214,19 +198,7 @@ pub fn SearchMethods(comptime T: type) type {
                 if (self.items.items.len == 0) break :counter;
 
                 for (self.items.items) |item| {
-                    const found = comptime blk: {
-                        const type_info = @typeInfo(T);
-                        break :blk switch (type_info) {
-                            .int, .float, .bool => true,
-                            else => false,
-                        };
-                    };
-
-                    if (found) {
-                        if (std.meta.eql(item, value)) n += 1;
-                    } else {
-                        if (item == value) n += 1;
-                    }
+                    if (equality.strictEquals(T, item, value)) n += 1;
                 }
             }
 

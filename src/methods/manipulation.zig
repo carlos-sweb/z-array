@@ -1,6 +1,9 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ZArrayError = @import("../errors.zig").ZArrayError;
+const zarray_mod = @import("../zarray.zig");
+const stringify = @import("../stringify.zig");
+const equality = @import("../equality.zig");
 
 /// Array manipulation methods (slice, splice, concat, reverse, sort, etc.)
 pub fn ManipulationMethods(comptime T: type) type {
@@ -90,6 +93,38 @@ pub fn ManipulationMethods(comptime T: type) type {
             return deleted;
         }
 
+        /// ECMAScript toSpliced() - Like splice() but returns the entire resulting
+        /// array (not the removed elements) and leaves the original unmodified.
+        pub fn toSpliced(
+            self: *const Self,
+            start: isize,
+            delete_count_opt: ?usize,
+            items_to_insert: []const T,
+        ) !Self {
+            var result = try self.clone();
+            errdefer result.deinit();
+            var removed = try result.splice(start, delete_count_opt, items_to_insert);
+            removed.deinit();
+            return result;
+        }
+
+        /// ECMAScript with(index, value) - Returns a new array with the element at
+        /// `index` replaced by `value`. Unlike most of this API (which clamps
+        /// out-of-range indices), with() throws on an invalid index per spec
+        /// (RangeError in JS), mapped here to ZArrayError.IndexOutOfBounds.
+        pub fn with(self: *const Self, index: isize, value: T) !Self {
+            const len: isize = @intCast(self.items.items.len);
+            const norm_index = if (index < 0) index + len else index;
+            if (norm_index < 0 or norm_index >= len) {
+                return ZArrayError.IndexOutOfBounds;
+            }
+
+            var result = try self.clone();
+            errdefer result.deinit();
+            result.items.items[@intCast(norm_index)] = value;
+            return result;
+        }
+
         /// ECMAScript concat() - Merge arrays
         pub fn concat(self: *const Self, others: []const Self) !Self {
             var result = Self.init(self.allocator);
@@ -137,61 +172,123 @@ pub fn ManipulationMethods(comptime T: type) type {
             }
         }
 
-        /// ECMAScript join() - Join elements into string (for compatible types)
+        /// ECMAScript toReversed() - Like reverse() but returns a new array, leaving
+        /// the original unmodified.
+        pub fn toReversed(self: *const Self) !Self {
+            var result = try self.clone();
+            errdefer result.deinit();
+            result.reverse();
+            return result;
+        }
+
+        /// ECMAScript toSorted() - Like sort() but returns a new array, leaving the
+        /// original unmodified.
+        pub fn toSorted(
+            self: *const Self,
+            context: anytype,
+            comptime compareFn: fn (@TypeOf(context), T, T) bool,
+        ) !Self {
+            var result = try self.clone();
+            errdefer result.deinit();
+            result.sort(context, compareFn);
+            return result;
+        }
+
+        /// ECMAScript join() - Join elements into string
         pub fn join(self: *const Self, separator: []const u8, allocator: Allocator) ![]u8 {
             if (self.items.items.len == 0) return try allocator.dupe(u8, "");
 
             var list: std.ArrayList(u8) = .empty;
             errdefer list.deinit(allocator);
 
-            joiner: {
-                for (self.items.items, 0..) |item, i| {
-                    if (i > 0) {
-                        try list.appendSlice(allocator, separator);
-                    }
-
-                    // Handle different types using comptime switch
-                    const type_info = @typeInfo(T);
-                    switch (type_info) {
-                        .int, .comptime_int => {
-                            var buf: [32]u8 = undefined;
-                            const str = try std.fmt.bufPrint(&buf, "{d}", .{item});
-                            try list.appendSlice(allocator, str);
-                        },
-                        .float, .comptime_float => {
-                            var buf: [64]u8 = undefined;
-                            const str = try std.fmt.bufPrint(&buf, "{d}", .{item});
-                            try list.appendSlice(allocator, str);
-                        },
-                        .bool => {
-                            const str = if (item) "true" else "false";
-                            try list.appendSlice(allocator, str);
-                        },
-                        .pointer => |ptr_info| {
-                            if (ptr_info.size == .Slice and ptr_info.child == u8) {
-                                try list.appendSlice(allocator, item);
-                            }
-                        },
-                        else => {
-                            // For other types, use default formatting
-                            var buf: [256]u8 = undefined;
-                            const str = try std.fmt.bufPrint(&buf, "{any}", .{item});
-                            try list.appendSlice(allocator, str);
-                        },
-                    }
+            for (self.items.items, 0..) |item, i| {
+                if (i > 0) {
+                    try list.appendSlice(allocator, separator);
                 }
-                break :joiner;
+                try stringify.appendStringified(T, .plain, allocator, &list, item);
             }
 
             return list.toOwnedSlice(allocator);
         }
 
-        /// ECMAScript flat() - Flatten nested arrays (for ZArray(ZArray(T)))
-        pub fn flat(self: *const Self, comptime depth: usize) !Self {
-            // This is a simplified version for single-level flattening
-            // Full implementation would need recursive type handling
-            _ = depth;
-            return try self.clone();
+        /// ECMAScript toString() - equivalent to join(",")
+        pub fn toString(self: *const Self, allocator: Allocator) ![]u8 {
+            return self.join(",", allocator);
+        }
+
+        /// ECMAScript toLocaleString() - like join(",") but uses T.toLocaleString() per
+        /// element when available. No locale database exists in Zig std, so without a
+        /// custom toLocaleString on T this is functionally identical to toString().
+        pub fn toLocaleString(self: *const Self, allocator: Allocator) ![]u8 {
+            if (self.items.items.len == 0) return try allocator.dupe(u8, "");
+
+            var list: std.ArrayList(u8) = .empty;
+            errdefer list.deinit(allocator);
+
+            for (self.items.items, 0..) |item, i| {
+                if (i > 0) {
+                    try list.appendSlice(allocator, ",");
+                }
+                try stringify.appendStringified(T, .locale, allocator, &list, item);
+            }
+
+            return list.toOwnedSlice(allocator);
+        }
+
+        /// Type resulting from flattening X by `depth` levels of ZArray nesting.
+        /// If X isn't a ZArray(U) or depth reaches 0, stops and returns X unchanged
+        /// (mirrors JS: flattening a non-array element is a no-op).
+        pub fn FlattenType(comptime X: type, comptime depth: usize) type {
+            if (depth == 0) return X;
+            if (zarray_mod.isZArray(X)) {
+                return FlattenType(X.ZArrayElementType, depth - 1);
+            }
+            return X;
+        }
+
+        fn flattenInto(
+            comptime R: type,
+            comptime X: type,
+            comptime depth: usize,
+            allocator: Allocator,
+            items: []const X,
+            out: *zarray_mod.ZArray(R),
+        ) !void {
+            if (depth == 0 or X == R) {
+                try out.items.appendSlice(allocator, items);
+                return;
+            }
+            for (items) |sub_arr| {
+                try flattenInto(R, X.ZArrayElementType, depth - 1, allocator, sub_arr.items.items, out);
+            }
+        }
+
+        /// Total ZArray nesting depth of T, computed entirely at comptime from the type.
+        fn ZArrayNestingDepth(comptime X: type) usize {
+            if (zarray_mod.isZArray(X)) return 1 + ZArrayNestingDepth(X.ZArrayElementType);
+            return 0;
+        }
+
+        /// ECMAScript flat(depth) - Flatten nested ZArrays by `depth` levels. Zig has no
+        /// default parameters, so depth is required here (unlike JS's flat(depth = 1));
+        /// see flatShallow()/flatDeep() for the common cases.
+        pub fn flat(self: *const Self, comptime depth: usize) !zarray_mod.ZArray(FlattenType(T, depth)) {
+            const R = comptime FlattenType(T, depth);
+            var result = zarray_mod.ZArray(R).init(self.allocator);
+            errdefer result.deinit();
+            try flattenInto(R, T, depth, self.allocator, self.items.items, &result);
+            return result;
+        }
+
+        /// Equivalent to JS's `arr.flat()` (default depth = 1).
+        pub fn flatShallow(self: *const Self) !zarray_mod.ZArray(FlattenType(T, 1)) {
+            return self.flat(1);
+        }
+
+        /// Equivalent to JS's `arr.flat(Infinity)`: flattens every ZArray nesting level
+        /// that structurally exists in T (computed at comptime, so no infinite recursion).
+        pub fn flatDeep(self: *const Self) !zarray_mod.ZArray(FlattenType(T, ZArrayNestingDepth(T))) {
+            return self.flat(comptime ZArrayNestingDepth(T));
         }
 
         /// Remove element at index
@@ -231,7 +328,14 @@ pub fn ManipulationMethods(comptime T: type) type {
             uniquer: {
                 if (self.items.items.len == 0) break :uniquer;
 
-                var seen = std.AutoHashMap(T, void).init(self.allocator);
+                // SameValueZero + content hashing (not std.AutoHashMap's pointer
+                // identity), so e.g. ZArray([]const u8) dedupes by string content.
+                var seen = std.HashMap(
+                    T,
+                    void,
+                    equality.ZArrayHashContext(T),
+                    std.hash_map.default_max_load_percentage,
+                ).init(self.allocator);
                 defer seen.deinit();
 
                 for (self.items.items) |item| {

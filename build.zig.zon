@@ -11,5 +11,7 @@
         "README.md",
         "README.es.md",
     },
-    .dependencies = .{},
+    .dependencies = .{
+        .znumber = .{ .path = "../z-number" },
+    },
 }

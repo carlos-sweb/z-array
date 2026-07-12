@@ -51,21 +51,28 @@ pub fn BasicMethods(comptime T: type) type {
             return self.items.items.len;
         }
 
-        /// ECMAScript fill() - Fill array with a value
-        pub fn fill(self: *Self, value: T, start_opt: ?usize, end_opt: ?usize) void {
-            const len = self.items.items.len;
+        /// ECMAScript fill() - Fill array with a value. Negative start/end count from
+        /// the end, matching at()/slice()/splice()/copyWithin()/with().
+        pub fn fill(self: *Self, value: T, start_opt: ?isize, end_opt: ?isize) void {
+            const len: isize = @intCast(self.items.items.len);
             if (len == 0) return;
 
-            const start = start_opt orelse 0;
-            const end = end_opt orelse len;
+            const norm_start = normalize: {
+                const s = start_opt orelse 0;
+                const s_norm = if (s < 0) @max(len + s, 0) else @min(s, len);
+                break :normalize @as(usize, @intCast(s_norm));
+            };
 
-            const actual_start = @min(start, len);
-            const actual_end = @min(end, len);
+            const norm_end = normalize: {
+                const e = end_opt orelse len;
+                const e_norm = if (e < 0) @max(len + e, 0) else @min(e, len);
+                break :normalize @as(usize, @intCast(e_norm));
+            };
 
-            if (actual_start >= actual_end) return;
+            if (norm_start >= norm_end) return;
 
-            var i = actual_start;
-            while (i < actual_end) : (i += 1) {
+            var i = norm_start;
+            while (i < norm_end) : (i += 1) {
                 self.items.items[i] = value;
             }
         }

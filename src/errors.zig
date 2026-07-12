@@ -25,14 +25,7 @@ pub const ErrorContext = struct {
     message: []const u8,
     index: ?usize = null,
 
-    pub fn format(
-        self: ErrorContext,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
+    pub fn format(self: ErrorContext, writer: *std.Io.Writer) !void {
         try writer.print("ZArrayError: {s}", .{self.message});
         if (self.index) |idx| {
             try writer.print(" (index: {d})", .{idx});

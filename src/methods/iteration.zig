@@ -1,6 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ZArrayError = @import("../errors.zig").ZArrayError;
+const equality = @import("../equality.zig");
 
 /// Iteration methods (map, filter, forEach, reduce, etc.)
 pub fn IterationMethods(comptime T: type) type {
@@ -162,8 +163,15 @@ pub fn IterationMethods(comptime T: type) type {
             comptime K: type,
             context: anytype,
             comptime keyFn: fn (@TypeOf(context), T) K,
-        ) !std.AutoHashMap(K, Self) {
-            var groups = std.AutoHashMap(K, Self).init(self.allocator);
+        ) !std.HashMap(K, Self, equality.ZArrayHashContext(K), std.hash_map.default_max_load_percentage) {
+            // SameValueZero + content hashing (not std.AutoHashMap's pointer
+            // identity), so grouping by e.g. a []const u8 key works by content.
+            var groups = std.HashMap(
+                K,
+                Self,
+                equality.ZArrayHashContext(K),
+                std.hash_map.default_max_load_percentage,
+            ).init(self.allocator);
             errdefer {
                 var it = groups.valueIterator();
                 while (it.next()) |group| {

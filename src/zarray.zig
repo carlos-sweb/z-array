@@ -4,12 +4,25 @@ const errors = @import("errors.zig");
 
 pub const ZArrayError = errors.ZArrayError;
 pub const ErrorContext = errors.ErrorContext;
+pub const equality = @import("equality.zig");
+pub const stringify = @import("stringify.zig");
+pub const indexFromNumber = @import("jsvalue.zig").indexFromNumber;
+
+/// Comptime equivalent of Array.isArray(): is X a ZArray(U) for some U?
+/// In a statically typed language this question is answered at compile time.
+pub fn isZArray(comptime X: type) bool {
+    return @typeInfo(X) == .@"struct" and @hasDecl(X, "ZArrayElementType");
+}
 
 /// ZArray - ECMAScript-compatible dynamic array implementation
 /// Generic type T allows for any data type storage
 pub fn ZArray(comptime T: type) type {
     return struct {
         const Self = @This();
+
+        /// Comptime introspection marker: lets isZArray()/flat() detect "is this a
+        /// ZArray(U)?" and what U is, without runtime type info.
+        pub const ZArrayElementType = T;
 
         /// Internal dynamic array storage
         items: std.ArrayList(T),
@@ -27,7 +40,7 @@ pub fn ZArray(comptime T: type) type {
 
         /// Initialize with capacity hint
         pub fn initCapacity(allocator: Allocator, cap: usize) !Self {
-            var items = std.ArrayList(T){};
+            var items: std.ArrayList(T) = .empty;
             try items.ensureTotalCapacity(allocator, cap);
             return .{
                 .items = items,
@@ -42,6 +55,29 @@ pub fn ZArray(comptime T: type) type {
             return arr;
         }
 
+        /// ECMAScript Array.from(source, mapFn) - Build a ZArray(T) from a slice of a
+        /// (possibly different) source type U, transforming each element with mapFn.
+        /// The no-mapping case (U == T) is already covered by fromSlice().
+        pub fn from(
+            comptime U: type,
+            allocator: Allocator,
+            source: []const U,
+            context: anytype,
+            comptime mapFn: fn (@TypeOf(context), U, usize) T,
+        ) !Self {
+            var result = try Self.initCapacity(allocator, source.len);
+            errdefer result.deinit();
+            for (source, 0..) |item, i| {
+                result.items.appendAssumeCapacity(mapFn(context, item, i));
+            }
+            return result;
+        }
+
+        /// ECMAScript Array.of(...) - explicit alias of fromSlice for API parity.
+        pub fn of(allocator: Allocator, vals: []const T) !Self {
+            return Self.fromSlice(allocator, vals);
+        }
+
         /// Free all allocated memory
         pub fn deinit(self: *Self) void {
             self.items.deinit(self.allocator);
@@ -52,12 +88,15 @@ pub fn ZArray(comptime T: type) type {
             return self.items.items.len;
         }
 
-        /// Get item at index (bounds checked)
-        pub fn at(self: *const Self, index: usize) ZArrayError!T {
-            if (index >= self.items.items.len) {
+        /// ECMAScript at() - Get item at index (bounds checked). Negative indices count
+        /// from the end, e.g. at(-1) returns the last element.
+        pub fn at(self: *const Self, index: isize) ZArrayError!T {
+            const len: isize = @intCast(self.items.items.len);
+            const norm_index = if (index < 0) index + len else index;
+            if (norm_index < 0 or norm_index >= len) {
                 return ZArrayError.IndexOutOfBounds;
             }
-            return self.items.items[index];
+            return self.items.items[@intCast(norm_index)];
         }
 
         /// Get item at index (unchecked for performance)
@@ -100,6 +139,7 @@ pub fn ZArray(comptime T: type) type {
         const IterationMethods = @import("methods/iteration.zig").IterationMethods(T);
         const SearchMethods = @import("methods/search.zig").SearchMethods(T);
         const ManipulationMethods = @import("methods/manipulation.zig").ManipulationMethods(T);
+        const IteratorMethods = @import("methods/iterators.zig").IteratorMethods(T);
 
         // Basic methods
         pub const push = BasicMethods.push;
@@ -148,7 +188,15 @@ pub fn ZArray(comptime T: type) type {
         pub const reverse = ManipulationMethods.reverse;
         pub const sort = ManipulationMethods.sort;
         pub const join = ManipulationMethods.join;
+        pub const toString = ManipulationMethods.toString;
+        pub const toLocaleString = ManipulationMethods.toLocaleString;
         pub const flat = ManipulationMethods.flat;
+        pub const flatShallow = ManipulationMethods.flatShallow;
+        pub const flatDeep = ManipulationMethods.flatDeep;
+        pub const toReversed = ManipulationMethods.toReversed;
+        pub const toSorted = ManipulationMethods.toSorted;
+        pub const toSpliced = ManipulationMethods.toSpliced;
+        pub const with = ManipulationMethods.with;
         pub const remove = ManipulationMethods.remove;
         pub const swapRemove = ManipulationMethods.swapRemove;
         pub const insert = ManipulationMethods.insert;
@@ -157,6 +205,11 @@ pub fn ZArray(comptime T: type) type {
         pub const rotateLeft = ManipulationMethods.rotateLeft;
         pub const rotateRight = ManipulationMethods.rotateRight;
         pub const shuffle = ManipulationMethods.shuffle;
+
+        // Iterator methods
+        pub const values = IteratorMethods.values;
+        pub const keys = IteratorMethods.keys;
+        pub const entries = IteratorMethods.entries;
     };
 }
 

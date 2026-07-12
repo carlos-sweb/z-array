@@ -116,6 +116,20 @@ test "fill" {
     try testing.expectEqual(@as(i32, 0), try arr.at(4));
 }
 
+test "fill with negative start/end" {
+    var arr = ZArray(i32).init(testing.allocator);
+    defer arr.deinit();
+
+    const values = [_]i32{ 1, 2, 3, 4, 5 };
+    _ = try arr.pushMany(&values);
+
+    arr.fill(9, -2, null);
+    try testing.expectEqualSlices(i32, &[_]i32{ 1, 2, 3, 9, 9 }, arr.toSlice());
+
+    arr.fill(0, -5, -3);
+    try testing.expectEqualSlices(i32, &[_]i32{ 0, 0, 3, 9, 9 }, arr.toSlice());
+}
+
 test "copyWithin" {
     var arr = ZArray(i32).init(testing.allocator);
     defer arr.deinit();
@@ -204,4 +218,18 @@ test "capacity and reserve" {
     try arr.reserve(100);
 
     try testing.expect(arr.capacity() >= initial_cap + 100);
+}
+
+test "at with negative index" {
+    var arr = ZArray(i32).init(testing.allocator);
+    defer arr.deinit();
+
+    const values = [_]i32{ 10, 20, 30, 40 };
+    _ = try arr.pushMany(&values);
+
+    try testing.expectEqual(@as(i32, 40), try arr.at(-1));
+    try testing.expectEqual(@as(i32, 30), try arr.at(-2));
+    try testing.expectEqual(@as(i32, 10), try arr.at(-4));
+    try testing.expectError(error.IndexOutOfBounds, arr.at(-5));
+    try testing.expectError(error.IndexOutOfBounds, arr.at(4));
 }

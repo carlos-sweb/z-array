@@ -232,6 +232,41 @@ test "groupBy" {
     try testing.expectEqual(@as(usize, 5), odd.length());
 }
 
+var g_even_buf: [4]u8 = .{ 'e', 'v', 'e', 'n' };
+var g_odd_buf: [3]u8 = .{ 'o', 'd', 'd' };
+
+test "groupBy with []const u8 key (regression: used to group by pointer identity)" {
+    var arr = ZArray(i32).init(testing.allocator);
+    defer arr.deinit();
+
+    const values = [_]i32{ 1, 2, 3, 4, 5, 6 };
+    _ = try arr.pushMany(&values);
+
+    // keyFn alternates between a string literal and a runtime buffer with the
+    // *same content* but a *different address* each call, so a pointer-identity
+    // hashmap (the old std.AutoHashMap behavior) would wrongly create 4 groups
+    // instead of 2.
+    var groups = try arr.groupBy([]const u8, {}, struct {
+        fn keyFn(_: void, item: i32) []const u8 {
+            if (@mod(item, 2) == 0) {
+                return if (@mod(item, 4) == 0) "even" else g_even_buf[0..];
+            }
+            return if (@mod(item, 3) == 0) "odd" else g_odd_buf[0..];
+        }
+    }.keyFn);
+    defer {
+        var it = groups.valueIterator();
+        while (it.next()) |group| {
+            group.deinit();
+        }
+        groups.deinit();
+    }
+
+    try testing.expectEqual(@as(usize, 2), groups.count());
+    try testing.expectEqual(@as(usize, 3), groups.get("even").?.length());
+    try testing.expectEqual(@as(usize, 3), groups.get("odd").?.length());
+}
+
 test "map to different type" {
     var arr = ZArray(i32).init(testing.allocator);
     defer arr.deinit();

@@ -268,3 +268,82 @@ test "some on empty array" {
 
     try testing.expect(!result);
 }
+
+test "indexOf/includes/count with []const u8 (regression: used to fail to compile)" {
+    var arr = ZArray([]const u8).init(testing.allocator);
+    defer arr.deinit();
+
+    _ = try arr.push("hello");
+    _ = try arr.push("world");
+    _ = try arr.push("hello");
+
+    try testing.expectEqual(@as(?usize, 0), arr.indexOf("hello", null));
+    try testing.expectEqual(@as(?usize, 1), arr.indexOf("world", null));
+    try testing.expectEqual(@as(?usize, null), arr.indexOf("missing", null));
+    try testing.expect(arr.includes("world", null));
+    try testing.expect(!arr.includes("missing", null));
+    try testing.expectEqual(@as(usize, 2), arr.count("hello"));
+}
+
+test "lastIndexOf with []const u8" {
+    var arr = ZArray([]const u8).init(testing.allocator);
+    defer arr.deinit();
+
+    _ = try arr.push("a");
+    _ = try arr.push("b");
+    _ = try arr.push("a");
+
+    try testing.expectEqual(@as(?usize, 2), arr.lastIndexOf("a", null));
+}
+
+test "indexOf uses Strict Equality: NaN is never found" {
+    var arr = ZArray(f64).init(testing.allocator);
+    defer arr.deinit();
+
+    _ = try arr.push(1.0);
+    _ = try arr.push(std.math.nan(f64));
+    _ = try arr.push(3.0);
+
+    try testing.expectEqual(@as(?usize, null), arr.indexOf(std.math.nan(f64), null));
+}
+
+test "includes uses SameValueZero: NaN equals NaN" {
+    var arr = ZArray(f64).init(testing.allocator);
+    defer arr.deinit();
+
+    _ = try arr.push(1.0);
+    _ = try arr.push(std.math.nan(f64));
+
+    try testing.expect(arr.includes(std.math.nan(f64), null));
+}
+
+test "indexOf/includes treat +0 and -0 as equal" {
+    var arr = ZArray(f64).init(testing.allocator);
+    defer arr.deinit();
+
+    _ = try arr.push(0.0);
+
+    try testing.expectEqual(@as(?usize, 0), arr.indexOf(-0.0, null));
+    try testing.expect(arr.includes(-0.0, null));
+}
+
+const EqPoint = struct {
+    x: i32,
+    y: i32,
+
+    pub fn eql(a: EqPoint, b: EqPoint) bool {
+        return a.x == b.x and a.y == b.y;
+    }
+};
+
+test "indexOf/includes with struct implementing eql" {
+    var arr = ZArray(EqPoint).init(testing.allocator);
+    defer arr.deinit();
+
+    _ = try arr.push(.{ .x = 1, .y = 1 });
+    _ = try arr.push(.{ .x = 2, .y = 2 });
+
+    try testing.expectEqual(@as(?usize, 1), arr.indexOf(.{ .x = 2, .y = 2 }, null));
+    try testing.expect(arr.includes(.{ .x = 1, .y = 1 }, null));
+    try testing.expectEqual(@as(?usize, null), arr.indexOf(.{ .x = 9, .y = 9 }, null));
+}
