@@ -326,10 +326,6 @@ Z-Array uses Zig's error handling system with custom error types:
 pub const ZArrayError = error{
     OutOfMemory,
     IndexOutOfBounds,
-    InvalidArgument,
-    EmptyArray,
-    NotSupported,
-    TypeMismatch,
 };
 ```
 

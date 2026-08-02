@@ -44,10 +44,7 @@ pub fn BasicMethods(comptime T: type) type {
 
         /// Unshift multiple values at once
         pub fn unshiftMany(self: *Self, values: []const T) !usize {
-            var i: usize = 0;
-            while (i < values.len) : (i += 1) {
-                try self.items.insert(self.allocator, i, values[i]);
-            }
+            try self.items.insertSlice(self.allocator, 0, values);
             return self.items.items.len;
         }
 
@@ -107,32 +104,16 @@ pub fn BasicMethods(comptime T: type) type {
             const count = norm_end - norm_start;
             const actual_count = @min(count, @as(usize, @intCast(len)) - norm_target);
 
-            // Use memmove for overlapping regions
             const src_start = norm_start;
             const dst_start = norm_target;
 
             if (src_start == dst_start) return;
 
-            // Create temporary buffer for safe copying
-            if (self.allocator.alloc(T, actual_count)) |temp| {
-                defer self.allocator.free(temp);
-                @memcpy(temp, self.items.items[src_start..][0..actual_count]);
-                @memcpy(self.items.items[dst_start..][0..actual_count], temp);
-            } else |_| {
-                // Fallback to element-by-element copy
-                if (dst_start < src_start) {
-                    var i: usize = 0;
-                    while (i < actual_count) : (i += 1) {
-                        self.items.items[dst_start + i] = self.items.items[src_start + i];
-                    }
-                } else {
-                    var i: usize = actual_count;
-                    while (i > 0) {
-                        i -= 1;
-                        self.items.items[dst_start + i] = self.items.items[src_start + i];
-                    }
-                }
-            }
+            // @memmove handles overlap in either direction, no allocation needed.
+            @memmove(
+                self.items.items[dst_start..][0..actual_count],
+                self.items.items[src_start..][0..actual_count],
+            );
         }
 
         /// Check if array is empty

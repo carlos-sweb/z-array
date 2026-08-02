@@ -6,31 +6,4 @@ pub const ZArrayError = error{
 
     /// Index out of bounds
     IndexOutOfBounds,
-
-    /// Invalid argument provided
-    InvalidArgument,
-
-    /// Array is empty when operation requires elements
-    EmptyArray,
-
-    /// Operation not supported
-    NotSupported,
-
-    /// Type mismatch in operation
-    TypeMismatch,
 };
-
-/// Error context for better debugging
-pub const ErrorContext = struct {
-    message: []const u8,
-    index: ?usize = null,
-
-    pub fn format(self: ErrorContext, writer: *std.Io.Writer) !void {
-        try writer.print("ZArrayError: {s}", .{self.message});
-        if (self.index) |idx| {
-            try writer.print(" (index: {d})", .{idx});
-        }
-    }
-};
-
-const std = @import("std");

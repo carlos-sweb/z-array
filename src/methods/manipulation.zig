@@ -112,7 +112,7 @@ pub fn ManipulationMethods(comptime T: type) type {
         /// `index` replaced by `value`. Unlike most of this API (which clamps
         /// out-of-range indices), with() throws on an invalid index per spec
         /// (RangeError in JS), mapped here to ZArrayError.IndexOutOfBounds.
-        pub fn with(self: *const Self, index: isize, value: T) !Self {
+        pub fn with(self: *const Self, index: isize, value: T) ZArrayError!Self {
             const len: isize = @intCast(self.items.items.len);
             const norm_index = if (index < 0) index + len else index;
             if (norm_index < 0 or norm_index >= len) {
@@ -292,7 +292,7 @@ pub fn ManipulationMethods(comptime T: type) type {
         }
 
         /// Remove element at index
-        pub fn remove(self: *Self, index: usize) !T {
+        pub fn remove(self: *Self, index: usize) ZArrayError!T {
             if (index >= self.items.items.len) {
                 return ZArrayError.IndexOutOfBounds;
             }
@@ -300,7 +300,7 @@ pub fn ManipulationMethods(comptime T: type) type {
         }
 
         /// Remove element at index (swap with last for O(1))
-        pub fn swapRemove(self: *Self, index: usize) !T {
+        pub fn swapRemove(self: *Self, index: usize) ZArrayError!T {
             if (index >= self.items.items.len) {
                 return ZArrayError.IndexOutOfBounds;
             }
@@ -308,7 +308,7 @@ pub fn ManipulationMethods(comptime T: type) type {
         }
 
         /// Insert element at index
-        pub fn insert(self: *Self, index: usize, value: T) !void {
+        pub fn insert(self: *Self, index: usize, value: T) ZArrayError!void {
             if (index > self.items.items.len) {
                 return ZArrayError.IndexOutOfBounds;
             }

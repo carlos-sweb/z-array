@@ -326,10 +326,6 @@ Z-Array usa el sistema de manejo de errores de Zig con tipos de error personaliz
 pub const ZArrayError = error{
     OutOfMemory,        // Sin memoria
     IndexOutOfBounds,   // Índice fuera de límites
-    InvalidArgument,    // Argumento inválido
-    EmptyArray,         // Array vacío
-    NotSupported,       // No soportado
-    TypeMismatch,       // Desajuste de tipo
 };
 ```
 
