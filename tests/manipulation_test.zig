@@ -187,6 +187,33 @@ test "join empty array" {
     try testing.expectEqualStrings("", result);
 }
 
+fn doubleAndFormat(_: void, item: i32, allocator: std.mem.Allocator) ![]u8 {
+    return std.fmt.allocPrint(allocator, "<{d}>", .{item * 2});
+}
+
+test "joinWith uses the caller-supplied stringify function, not T.toString()" {
+    var arr = ZArray(i32).init(testing.allocator);
+    defer arr.deinit();
+
+    const values = [_]i32{ 1, 2, 3 };
+    _ = try arr.pushMany(&values);
+
+    const result = try arr.joinWith("-", testing.allocator, {}, doubleAndFormat);
+    defer testing.allocator.free(result);
+
+    try testing.expectEqualStrings("<2>-<4>-<6>", result);
+}
+
+test "joinWith on empty array returns empty string without calling stringifyFn" {
+    var arr = ZArray(i32).init(testing.allocator);
+    defer arr.deinit();
+
+    const result = try arr.joinWith("-", testing.allocator, {}, doubleAndFormat);
+    defer testing.allocator.free(result);
+
+    try testing.expectEqualStrings("", result);
+}
+
 test "remove" {
     var arr = ZArray(i32).init(testing.allocator);
     defer arr.deinit();

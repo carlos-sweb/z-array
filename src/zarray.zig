@@ -187,6 +187,7 @@ pub fn ZArray(comptime T: type) type {
         pub const reverse = ManipulationMethods.reverse;
         pub const sort = ManipulationMethods.sort;
         pub const join = ManipulationMethods.join;
+        pub const joinWith = ManipulationMethods.joinWith;
         pub const toString = ManipulationMethods.toString;
         pub const toLocaleString = ManipulationMethods.toLocaleString;
         pub const flat = ManipulationMethods.flat;

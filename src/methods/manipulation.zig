@@ -211,6 +211,38 @@ pub fn ManipulationMethods(comptime T: type) type {
             return list.toOwnedSlice(allocator);
         }
 
+        /// Like join(), but stringifies each element through a caller-supplied
+        /// function instead of duck-typing T.toString()/toLocaleString() (see
+        /// stringify.zig). For a T whose "how do I become a string" isn't a
+        /// property of the value alone -- e.g. an embedder's tagged-union
+        /// value type where stringification needs access to the embedder's
+        /// own coercion rules -- this lets the caller supply that logic
+        /// without T itself growing a toString() method. Comptime callback,
+        /// same shape as map()/filter()/sort()'s callback parameter.
+        pub fn joinWith(
+            self: *const Self,
+            separator: []const u8,
+            allocator: Allocator,
+            context: anytype,
+            comptime stringifyFn: fn (@TypeOf(context), T, Allocator) anyerror![]u8,
+        ) ![]u8 {
+            if (self.items.items.len == 0) return try allocator.dupe(u8, "");
+
+            var list: std.ArrayList(u8) = .empty;
+            errdefer list.deinit(allocator);
+
+            for (self.items.items, 0..) |item, i| {
+                if (i > 0) {
+                    try list.appendSlice(allocator, separator);
+                }
+                const s = try stringifyFn(context, item, allocator);
+                defer allocator.free(s);
+                try list.appendSlice(allocator, s);
+            }
+
+            return list.toOwnedSlice(allocator);
+        }
+
         /// ECMAScript toString() - equivalent to join(",")
         pub fn toString(self: *const Self, allocator: Allocator) ![]u8 {
             return self.join(",", allocator);
