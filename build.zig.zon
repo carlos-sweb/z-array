@@ -1,18 +1,26 @@
 .{
     .name = .zarray,
     .version = "0.1.0",
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .fingerprint = 0x7c5596ae9d7ed1f8,
     .description = "High-performance ECMAScript-compatible dynamic array implementation in Zig",
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src/",
+        "tests/",
+        "mise.toml",
         "README.md",
         "README.es.md",
     },
     .dependencies = .{
-        .znumber = .{ .path = "../z-number" },
-        .zequality = .{ .path = "../z-equality" },
+        .znumber = .{
+            .url = "https://github.com/carlos-sweb/z-number/archive/9fb0c965e9336222ae252b7b0bc7dae0eec21291.tar.gz",
+            .hash = "znumber-0.1.0-ZBd29k1PdAD3V_SXlyBTBM0R0duQq2PMC4bOHMNch2Yd",
+        },
+        .zequality = .{
+            .url = "https://github.com/carlos-sweb/z-equality/archive/adbdb15316c6d5de64677dfe0d24799a3fb297e9.tar.gz",
+            .hash = "zequality-0.1.0-DIk5OcljAACQJrCNOhi8UM2-BuBYEQvgMj98v2sctab3",
+        },
     },
 }

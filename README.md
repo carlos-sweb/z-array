@@ -1,9 +1,9 @@
 # Z-Array
 
-[![Zig Version](https://img.shields.io/badge/zig-0.16-orange.svg)](https://ziglang.org/)
+[![Zig Version](https://img.shields.io/badge/zig-0.17-orange.svg)](https://ziglang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Z-Array** is a high-performance, ECMAScript-compatible dynamic array implementation written in Zig 0.16. Designed to be a core component for JavaScript engines like Bun or QuickJS, Z-Array provides a complete array API that mirrors ECMAScript specifications while leveraging Zig's powerful compile-time features and safety guarantees.
+**Z-Array** is a high-performance, ECMAScript-compatible dynamic array implementation written in Zig 0.17. Designed to be a core component for JavaScript engines like Bun or QuickJS, Z-Array provides a complete array API that mirrors ECMAScript specifications while leveraging Zig's powerful compile-time features and safety guarantees.
 
 [🇪🇸 Versión en Español](README.es.md)
 
@@ -48,37 +48,43 @@ z-array/
 └── README.es.md
 ```
 
+## API documentation
+
+[Browse the generated Zig API documentation](https://carlos-sweb.github.io/z-array/).
+
+Generate and serve it locally:
+
+```bash
+zig build docs
+python3 -m http.server 8000 --directory zig-out/docs
+```
+
+Open `http://localhost:8000/`. GitHub Pages regenerates the documentation after each push to `master`.
+
 ## Installation
 
 ### Prerequisites
 
-- Zig 0.16 or higher
+- Zig 0.17 or higher
 
 ### Dependencies
 
-Z-Array depends on [z-number](https://github.com/carlos-sweb/z-number) (same author) for spec-exact numeric formatting and index coercion — see [Features](#features) — and on [z-equality](https://github.com/carlos-sweb/z-equality) for the Strict Equality/SameValueZero comparison and content-hashing algorithms (`zarray.equality` is a transparent re-export of it, extracted so `z-value`/`z-map`/`z-set` share the same implementation instead of duplicating it). In `build.zig.zon`, both are currently resolved as local sibling paths:
-```zig
-.znumber = .{ .path = "../z-number" },
-.zequality = .{ .path = "../z-equality" },
-```
-Once these have published, tagged commits you want to pin, swap them for git dependencies instead:
-```bash
-zig fetch --save git+https://github.com/carlos-sweb/z-number.git
-zig fetch --save git+https://github.com/carlos-sweb/z-equality.git
-```
+Z-Array depends on [z-number](https://github.com/carlos-sweb/z-number) (same author) for spec-exact numeric formatting and index coercion — see [Features](#features) — and on [z-equality](https://github.com/carlos-sweb/z-equality) for the Strict Equality/SameValueZero comparison and content-hashing algorithms (`zarray.equality` is a transparent re-export of it, extracted so `z-value`/`z-map`/`z-set` share the same implementation instead of duplicating it). In `build.zig.zon`, both dependencies are pinned to published commits compatible with Zig 0.17, with verified package hashes. No sibling checkouts are required.
+
+To update either dependency, choose a compatible commit and refresh its URL and hash with `zig fetch --save=znumber <url>` or `zig fetch --save=zequality <url>`.
 
 ### Using in Your Project
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/yourusername/z-array.git
+git clone https://github.com/carlos-sweb/z-array.git
 ```
 
 2. Add Z-Array to your `build.zig.zon` (Zig package manager):
 ```zig
 .dependencies = .{
     .zarray = .{
-        .url = "https://github.com/yourusername/z-array/archive/main.tar.gz",
+        .url = "https://github.com/carlos-sweb/z-array/archive/refs/tags/v0.1.0.tar.gz",
         .hash = "...", // zig will provide this
     },
 },
@@ -106,7 +112,7 @@ const std = @import("std");
 const ZArray = @import("zarray").ZArray;
 
 pub fn main() !void {
-    var gpa:std.heap.DebugAllocator(.{}) = .init;
+    var gpa: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -315,7 +321,7 @@ zig test tests/basic_test.zig
 ### Build in Release Mode
 
 ```bash
-zig build -Doptimize=ReleaseFast
+zig build -Doptimize=fast
 ```
 
 ## Error Handling

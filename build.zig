@@ -14,9 +14,19 @@ pub fn build(b: *std.Build) void {
     // Create a module for the library
     const zarray_module = b.addModule("zarray", .{
         .root_source_file = b.path("src/zarray.zig"),
+        .target = target,
+        .optimize = optimize,
     });
     zarray_module.addImport("znumber", znumber_module);
     zarray_module.addImport("zequality", zequality_module);
+
+    const docs_object = b.addObject(.{ .name = "zarray", .root_module = zarray_module });
+    const docs_install = b.addInstallDirectory(.{
+        .source_dir = docs_object.getEmittedDocs(),
+        .install_dir = .prefix,
+        .install_subdir = "docs",
+    });
+    b.step("docs", "Generate Zig API documentation in zig-out/docs").dependOn(&docs_install.step);
 
     // Test setup
     const test_step = b.step("test", "Run all tests");

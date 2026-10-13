@@ -1,9 +1,9 @@
 # Z-Array
 
-[![Versión de Zig](https://img.shields.io/badge/zig-0.16-orange.svg)](https://ziglang.org/)
+[![Versión de Zig](https://img.shields.io/badge/zig-0.17-orange.svg)](https://ziglang.org/)
 [![Licencia: MIT](https://img.shields.io/badge/Licencia-MIT-blue.svg)](LICENSE)
 
-**Z-Array** es una implementación de array dinámico de alto rendimiento compatible con ECMAScript, escrito en Zig 0.16. Diseñado para ser un componente central para motores JavaScript como Bun o QuickJS, Z-Array proporciona una API de array completa que refleja las especificaciones de ECMAScript mientras aprovecha las potentes características de tiempo de compilación y garantías de seguridad de Zig.
+**Z-Array** es una implementación de array dinámico de alto rendimiento compatible con ECMAScript, escrito en Zig 0.17. Diseñado para ser un componente central para motores JavaScript como Bun o QuickJS, Z-Array proporciona una API de array completa que refleja las especificaciones de ECMAScript mientras aprovecha las potentes características de tiempo de compilación y garantías de seguridad de Zig.
 
 [🇬🇧 English Version](README.md)
 
@@ -48,37 +48,43 @@ z-array/
 └── README.es.md
 ```
 
+## Documentación de la API
+
+[Consulta la documentación de Zig generada](https://carlos-sweb.github.io/z-array/).
+
+Genérala y sírvela localmente:
+
+```bash
+zig build docs
+python3 -m http.server 8000 --directory zig-out/docs
+```
+
+Abre `http://localhost:8000/`. GitHub Pages regenera la documentación con cada push a `master`.
+
 ## Instalación
 
 ### Dependencias
 
-Z-Array depende de [z-number](https://github.com/carlos-sweb/z-number) (mismo autor) para el formateo numérico spec-exacto y la coerción de índices — ver [Características](#características) — y de [z-equality](https://github.com/carlos-sweb/z-equality) para los algoritmos de Strict Equality/SameValueZero y hash de contenido (`zarray.equality` es un re-export transparente de ese paquete, extraído para que `z-value`/`z-map`/`z-set` compartan la misma implementación en vez de duplicarla). En `build.zig.zon` ambos se resuelven hoy como paths locales hermanos:
-```zig
-.znumber = .{ .path = "../z-number" },
-.zequality = .{ .path = "../z-equality" },
-```
-Una vez que tengan commits publicados y etiquetados que quieras fijar, cámbialos por dependencias git:
-```bash
-zig fetch --save git+https://github.com/carlos-sweb/z-number.git
-zig fetch --save git+https://github.com/carlos-sweb/z-equality.git
-```
+Z-Array depende de [z-number](https://github.com/carlos-sweb/z-number) (mismo autor) para el formateo numérico spec-exacto y la coerción de índices — ver [Características](#características) — y de [z-equality](https://github.com/carlos-sweb/z-equality) para los algoritmos de Strict Equality/SameValueZero y hash de contenido (`zarray.equality` es un re-export transparente de ese paquete, extraído para que `z-value`/`z-map`/`z-set` compartan la misma implementación en vez de duplicarla). En `build.zig.zon`, ambas dependencias están fijadas a commits publicados compatibles con Zig 0.17, con hashes de paquete verificados. No se requieren repositorios hermanos.
+
+Para actualizar una dependencia, elige un commit compatible y actualiza su URL y hash con `zig fetch --save=znumber <url>` o `zig fetch --save=zequality <url>`.
 
 ### Requisitos Previos
 
-- Zig 0.16 o superior
+- Zig 0.17 o superior
 
 ### Uso en tu Proyecto
 
 1. Clona este repositorio:
 ```bash
-git clone https://github.com/yourusername/z-array.git
+git clone https://github.com/carlos-sweb/z-array.git
 ```
 
 2. Agrega Z-Array a tu `build.zig.zon` (gestor de paquetes de Zig):
 ```zig
 .dependencies = .{
     .zarray = .{
-        .url = "https://github.com/yourusername/z-array/archive/main.tar.gz",
+        .url = "https://github.com/carlos-sweb/z-array/archive/refs/tags/v0.1.0.tar.gz",
         .hash = "...", // zig proporcionará esto
     },
 },
@@ -106,7 +112,7 @@ const std = @import("std");
 const ZArray = @import("zarray").ZArray;
 
 pub fn main() !void {
-    var gpa:std.heap.DebugAllocator(.{}) = .init;
+    var gpa: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -315,7 +321,7 @@ zig test tests/basic_test.zig
 ### Compilar en Modo Release
 
 ```bash
-zig build -Doptimize=ReleaseFast
+zig build -Doptimize=fast
 ```
 
 ## Manejo de Errores
