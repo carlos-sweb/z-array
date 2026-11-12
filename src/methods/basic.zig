@@ -9,42 +9,61 @@ pub fn BasicMethods(comptime T: type) type {
         /// ECMAScript push() - Add one or more elements to the end
         /// Returns the new length of the array
         pub fn push(self: *Self, value: T) !usize {
-            try self.items.append(self.allocator, value);
-            return self.items.items.len;
+            if (!self.is_holey and self.sparse == null and self.logical_length == self.items.items.len) {
+                try self.items.append(self.allocator, value);
+                self.logical_length = @intCast(self.items.items.len);
+                return self.items.items.len;
+            }
+            const idx = self.length();
+            try self.set(idx, value);
+            return self.length();
         }
 
         /// Push multiple values at once
         pub fn pushMany(self: *Self, values: []const T) !usize {
-            try self.items.appendSlice(self.allocator, values);
-            return self.items.items.len;
+            if (!self.is_holey and self.sparse == null and self.logical_length == self.items.items.len) {
+                try self.items.appendSlice(self.allocator, values);
+                self.logical_length = @intCast(self.items.items.len);
+                return self.items.items.len;
+            }
+            for (values) |v| _ = try self.push(v);
+            return self.length();
         }
 
         /// ECMAScript pop() - Remove and return the last element
         pub fn pop(self: *Self) ?T {
             if (self.items.items.len == 0) {
+                if (self.logical_length > 0) self.logical_length -= 1;
                 return null;
             }
-            return self.items.pop();
+            const v = self.items.pop();
+            self.logical_length = @intCast(self.items.items.len);
+            return v;
         }
 
         /// ECMAScript shift() - Remove and return the first element
         pub fn shift(self: *Self) ?T {
             if (self.items.items.len == 0) {
+                if (self.logical_length > 0) self.logical_length -= 1;
                 return null;
             }
-            return self.items.orderedRemove(0);
+            const v = self.items.orderedRemove(0);
+            self.logical_length = @intCast(self.items.items.len);
+            return v;
         }
 
         /// ECMAScript unshift() - Add one or more elements to the beginning
         /// Returns the new length
         pub fn unshift(self: *Self, value: T) !usize {
             try self.items.insert(self.allocator, 0, value);
+            self.logical_length = @intCast(self.items.items.len);
             return self.items.items.len;
         }
 
         /// Unshift multiple values at once
         pub fn unshiftMany(self: *Self, values: []const T) !usize {
             try self.items.insertSlice(self.allocator, 0, values);
+            self.logical_length = @intCast(self.items.items.len);
             return self.items.items.len;
         }
 
@@ -118,7 +137,7 @@ pub fn BasicMethods(comptime T: type) type {
 
         /// Check if array is empty
         pub fn isEmpty(self: *const Self) bool {
-            return self.items.items.len == 0;
+            return self.length() == 0;
         }
 
         /// Reserve capacity

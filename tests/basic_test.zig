@@ -161,7 +161,11 @@ test "set with bounds checking" {
     try arr.set(0, 20);
     try testing.expectEqual(@as(i32, 20), try arr.at(0));
 
-    try testing.expectError(error.IndexOutOfBounds, arr.set(1, 30));
+    try arr.set(1, 30);
+    try testing.expectEqual(@as(usize, 2), arr.length());
+    try testing.expectEqual(@as(i32, 30), try arr.at(1));
+
+    try testing.expectError(error.IndexOutOfBounds, arr.set(std.math.maxInt(u32), 40));
 }
 
 test "clear" {
@@ -232,4 +236,92 @@ test "at with negative index" {
     try testing.expectEqual(@as(i32, 10), try arr.at(-4));
     try testing.expectError(error.IndexOutOfBounds, arr.at(-5));
     try testing.expectError(error.IndexOutOfBounds, arr.at(4));
+}
+
+test "E2 dense array fast path and OOB" {
+    const slice = [_]i32{ 1, 2, 3 };
+    var arr = try ZArray(i32).fromSlice(testing.allocator, &slice);
+    defer arr.deinit();
+
+    try testing.expect(!arr.is_holey);
+    try testing.expect(arr.sparse == null);
+    try testing.expectEqual(@as(i32, 1), arr.get(0));
+    try testing.expectEqual(@as(?i32, 1), arr.getOpt(0));
+    try testing.expectEqual(@as(i32, 0), arr.get(3));
+    try testing.expectEqual(@as(?i32, null), arr.getOpt(3));
+}
+
+test "E2 simple hole [1, , 3]" {
+    var arr = ZArray(i32).init(testing.allocator);
+    defer arr.deinit();
+
+    try arr.set(0, 1);
+    try arr.set(2, 3);
+
+    try testing.expect(arr.is_holey);
+    try testing.expect(arr.sparse == null);
+    try testing.expectEqual(@as(usize, 3), arr.length());
+    try testing.expectEqual(@as(i32, 1), arr.get(0));
+    try testing.expect(!arr.isHole(0));
+    try testing.expect(arr.isHole(1));
+    try testing.expectEqual(@as(?i32, null), arr.getOpt(1));
+    try testing.expectEqual(@as(i32, 3), arr.get(2));
+    try testing.expect(!arr.isHole(2));
+}
+
+test "E2 delete marks hole" {
+    const slice = [_]i32{ 10, 20, 30 };
+    var arr = try ZArray(i32).fromSlice(testing.allocator, &slice);
+    defer arr.deinit();
+
+    try testing.expect(!arr.is_holey);
+    arr.delete(0);
+    try testing.expect(arr.is_holey);
+    try testing.expect(arr.isHole(0));
+    try testing.expectEqual(@as(?i32, null), arr.getOpt(0));
+    try testing.expectEqual(@as(i32, 0), arr.get(0));
+    try testing.expectEqual(@as(i32, 20), arr.get(1));
+    try testing.expectEqual(@as(usize, 3), arr.length());
+}
+
+test "E2 sparse array degradation for index > len + 1024" {
+    var arr = ZArray(i32).init(testing.allocator);
+    defer arr.deinit();
+
+    try arr.set(100_000, 1);
+    try testing.expect(arr.is_holey);
+    try testing.expect(arr.sparse != null);
+    try testing.expectEqual(@as(usize, 0), arr.items.items.len);
+    try testing.expectEqual(@as(usize, 100_001), arr.length());
+    try testing.expect(arr.isHole(0));
+    try testing.expectEqual(@as(?i32, null), arr.getOpt(0));
+    try testing.expect(!arr.isHole(100_000));
+    try testing.expectEqual(@as(i32, 1), arr.get(100_000));
+    try testing.expectEqual(@as(?i32, 1), arr.getOpt(100_000));
+}
+
+test "E2 logical_length Array(1e7) without allocating 1e7 slots" {
+    var arr = ZArray(i32).initWithLength(testing.allocator, 10_000_000);
+    defer arr.deinit();
+
+    try testing.expectEqual(@as(usize, 10_000_000), arr.length());
+    try testing.expectEqual(@as(usize, 0), arr.items.items.len);
+    try testing.expectEqual(@as(usize, 0), arr.capacity());
+    try testing.expect(arr.is_holey);
+    try testing.expect(arr.isHole(0));
+    try testing.expect(arr.isHole(9_999_999));
+
+    try arr.setLength(5);
+    try testing.expectEqual(@as(usize, 5), arr.length());
+}
+
+test "E2 CanonicalNumericIndexString" {
+    const CanonicalNumericIndexString = @import("zarray").CanonicalNumericIndexString;
+    try testing.expectEqual(@as(?u32, 0), CanonicalNumericIndexString("0"));
+    try testing.expectEqual(@as(?u32, null), CanonicalNumericIndexString("00"));
+    try testing.expectEqual(@as(?u32, null), CanonicalNumericIndexString("+0"));
+    try testing.expectEqual(@as(?u32, null), CanonicalNumericIndexString("-0"));
+    try testing.expectEqual(@as(?u32, null), CanonicalNumericIndexString("1e2"));
+    try testing.expectEqual(@as(?u32, null), CanonicalNumericIndexString("4294967295"));
+    try testing.expectEqual(@as(?u32, 4294967294), CanonicalNumericIndexString("4294967294"));
 }

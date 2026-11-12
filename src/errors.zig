@@ -6,4 +6,7 @@ pub const ZArrayError = error{
 
     /// Index out of bounds
     IndexOutOfBounds,
+
+    /// Array length is not writable
+    LengthNotWritable,
 };
