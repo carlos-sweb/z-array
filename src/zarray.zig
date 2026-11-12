@@ -46,30 +46,92 @@ pub fn ZArray(comptime T: type) type {
 
         pub const MAX_DENSE_GAP: usize = 1024;
 
+        pub const HoleyState = struct {
+            sparse: ?std.AutoHashMap(u32, T) = null,
+            hole_mask: std.ArrayListUnmanaged(u64) = .empty,
+            logical_length: u32 = 0,
+            is_holey: bool = false,
+            length_writable: bool = true,
+            has_element_descriptors: bool = false,
+
+            pub fn deinit(self: *HoleyState, allocator: Allocator) void {
+                self.hole_mask.deinit(allocator);
+                if (self.sparse) |*sp| {
+                    sp.deinit();
+                }
+            }
+        };
+
         /// Internal dynamic array storage
         items: std.ArrayList(T),
 
         /// Allocator used for memory management
         allocator: Allocator,
 
-        /// Sparse map for indices > items.len + 1024
-        sparse: ?std.AutoHashMap(u32, T) = null,
+        /// Lazy holey/sparse state. Null for normal dense arrays.
+        holey: ?*HoleyState = null,
 
-        /// Parallel bitmask for holes within 0..items.len (1 = hole, 0 = present).
-        /// Remains empty when is_holey == false.
-        hole_mask: std.ArrayListUnmanaged(u64) = .empty,
+        pub fn isHoley(self: *const Self) bool {
+            if (self.holey) |h| return h.is_holey;
+            return false;
+        }
 
-        /// Logical array length (ECMAScript [[Length]], may exceed items.len for sparse/holey arrays)
-        logical_length: u32 = 0,
+        pub fn isSparse(self: *const Self) bool {
+            if (self.holey) |h| return h.sparse != null;
+            return false;
+        }
 
-        /// True if the array contains holes or sparse elements
-        is_holey: bool = false,
+        pub fn isLengthWritable(self: *const Self) bool {
+            if (self.holey) |h| return h.length_writable;
+            return true;
+        }
 
-        /// True if the length property is writable
-        length_writable: bool = true,
+        pub fn setLengthWritable(self: *Self, writable: bool) !void {
+            if (writable) {
+                if (self.holey) |h| h.length_writable = true;
+            } else {
+                const h = try self.ensureHoley();
+                h.length_writable = false;
+            }
+        }
 
-        /// True if any element has custom property descriptors via defineProperty
-        has_element_descriptors: bool = false,
+        pub fn hasElementDescriptors(self: *const Self) bool {
+            if (self.holey) |h| return h.has_element_descriptors;
+            return false;
+        }
+
+        pub fn setHasElementDescriptors(self: *Self, has: bool) !void {
+            if (has) {
+                const h = try self.ensureHoley();
+                h.has_element_descriptors = true;
+            } else {
+                if (self.holey) |h| h.has_element_descriptors = false;
+            }
+        }
+
+        pub fn getSparse(self: *Self) ?*std.AutoHashMap(u32, T) {
+            if (self.holey) |h| {
+                if (h.sparse) |*sp| return sp;
+            }
+            return null;
+        }
+
+        pub fn getSparseConst(self: *const Self) ?*const std.AutoHashMap(u32, T) {
+            if (self.holey) |h| {
+                if (h.sparse) |*sp| return sp;
+            }
+            return null;
+        }
+
+        pub fn ensureHoley(self: *Self) Allocator.Error!*HoleyState {
+            if (self.holey) |h| return h;
+            const h = try self.allocator.create(HoleyState);
+            h.* = .{
+                .logical_length = @intCast(self.items.items.len),
+            };
+            self.holey = h;
+            return h;
+        }
 
         inline fn defaultElement() T {
             const info = @typeInfo(T);
@@ -94,12 +156,17 @@ pub fn ZArray(comptime T: type) type {
         }
 
         /// Initialize an array with a logical length without allocating slots (e.g. Array(1e7))
-        pub fn initWithLength(allocator: Allocator, len: u32) Self {
+        pub fn initWithLength(allocator: Allocator, len: u32) !Self {
+            if (len == 0) return init(allocator);
+            const h = try allocator.create(HoleyState);
+            h.* = .{
+                .logical_length = len,
+                .is_holey = true,
+            };
             return .{
                 .items = .empty,
                 .allocator = allocator,
-                .logical_length = len,
-                .is_holey = len > 0,
+                .holey = h,
             };
         }
 
@@ -117,7 +184,6 @@ pub fn ZArray(comptime T: type) type {
         pub fn fromSlice(allocator: Allocator, slc: []const T) !Self {
             var arr = Self.init(allocator);
             try arr.items.appendSlice(allocator, slc);
-            arr.logical_length = @intCast(arr.items.items.len);
             return arr;
         }
 
@@ -136,7 +202,6 @@ pub fn ZArray(comptime T: type) type {
             for (source, 0..) |item, i| {
                 result.items.appendAssumeCapacity(mapFn(context, item, i));
             }
-            result.logical_length = @intCast(result.items.items.len);
             return result;
         }
 
@@ -148,61 +213,70 @@ pub fn ZArray(comptime T: type) type {
         /// Free all allocated memory
         pub fn deinit(self: *Self) void {
             self.items.deinit(self.allocator);
-            self.hole_mask.deinit(self.allocator);
-            if (self.sparse) |*sp| {
-                sp.deinit();
+            if (self.holey) |h| {
+                h.deinit(self.allocator);
+                self.allocator.destroy(h);
+                self.holey = null;
             }
         }
 
         fn ensureHoleMaskCapacity(self: *Self, item_count: usize) !void {
+            const h = try self.ensureHoley();
             const words_needed = (item_count + 63) >> 6;
-            if (words_needed > self.hole_mask.items.len) {
-                const prev_len = self.hole_mask.items.len;
-                try self.hole_mask.resize(self.allocator, words_needed);
-                @memset(self.hole_mask.items[prev_len..words_needed], 0);
+            if (words_needed > h.hole_mask.items.len) {
+                const prev_len = h.hole_mask.items.len;
+                try h.hole_mask.resize(self.allocator, words_needed);
+                @memset(h.hole_mask.items[prev_len..words_needed], 0);
             }
         }
 
         fn markHoleBit(self: *Self, index: usize) !void {
+            const h = try self.ensureHoley();
             try self.ensureHoleMaskCapacity(@max(self.items.items.len, index + 1));
-            self.hole_mask.items[index >> 6] |= (@as(u64, 1) << @intCast(index & 63));
-            self.is_holey = true;
+            h.hole_mask.items[index >> 6] |= (@as(u64, 1) << @intCast(index & 63));
+            h.is_holey = true;
         }
 
         fn clearHoleBit(self: *Self, index: usize) void {
-            const word_idx = index >> 6;
-            if (word_idx < self.hole_mask.items.len) {
-                self.hole_mask.items[word_idx] &= ~(@as(u64, 1) << @intCast(index & 63));
+            if (self.holey) |h| {
+                const word_idx = index >> 6;
+                if (word_idx < h.hole_mask.items.len) {
+                    h.hole_mask.items[word_idx] &= ~(@as(u64, 1) << @intCast(index & 63));
+                }
             }
         }
 
         /// Append a hole at the end of the array (e.g. for elided elements in `[1, , 3]`)
         pub fn appendHole(self: *Self) !void {
             const idx = self.length();
-            if (self.sparse == null and idx == self.items.items.len) {
+            const h = try self.ensureHoley();
+            if (h.sparse == null and idx == self.items.items.len) {
                 try self.items.append(self.allocator, defaultElement());
                 try self.markHoleBit(idx);
             } else {
-                self.is_holey = true;
+                h.is_holey = true;
             }
-            self.logical_length = @intCast(idx + 1);
+            h.logical_length = @intCast(idx + 1);
         }
 
         /// Check whether index is a hole (or out of bounds)
         pub fn isHole(self: *const Self, index: usize) bool {
+            const h = self.holey orelse {
+                return index >= self.items.items.len;
+            };
             const len = self.length();
             if (index >= len) return true;
-            if (!self.is_holey and self.sparse == null) return false;
-            if (self.sparse) |*sp| {
+            if (!h.is_holey and h.sparse == null) return false;
+            if (h.sparse) |*sp| {
                 if (index <= std.math.maxInt(u32) and sp.contains(@intCast(index))) {
                     return false;
                 }
             }
             if (index < self.items.items.len) {
                 const word_idx = index >> 6;
-                if (word_idx < self.hole_mask.items.len) {
+                if (word_idx < h.hole_mask.items.len) {
                     const mask = @as(u64, 1) << @intCast(index & 63);
-                    return (self.hole_mask.items[word_idx] & mask) != 0;
+                    return (h.hole_mask.items[word_idx] & mask) != 0;
                 }
                 return false;
             }
@@ -211,36 +285,42 @@ pub fn ZArray(comptime T: type) type {
 
         /// Get the length of the array (ECMAScript: array.length)
         pub fn length(self: *const Self) usize {
-            return @max(@as(usize, self.logical_length), self.items.items.len);
+            if (self.holey) |h| {
+                return @max(@as(usize, h.logical_length), self.items.items.len);
+            }
+            return self.items.items.len;
         }
 
         /// Set logical length (ECMAScript: array.length = n).
         /// Truncates dense/sparse elements when shrinking; updates logical_length without
         /// allocating when growing.
         pub fn setLength(self: *Self, new_len: u32) ZArrayError!void {
-            if (!self.length_writable) return ZArrayError.LengthNotWritable;
+            if (!self.isLengthWritable()) return ZArrayError.LengthNotWritable;
             const cur_len = self.length();
             if (new_len < cur_len) {
                 if (new_len < self.items.items.len) {
                     self.items.shrinkRetainingCapacity(new_len);
                 }
-                if (self.sparse) |*sp| {
-                    var to_remove: std.ArrayListUnmanaged(u32) = .empty;
-                    defer to_remove.deinit(self.allocator);
-                    var it = sp.keyIterator();
-                    while (it.next()) |k_ptr| {
-                        if (k_ptr.* >= new_len) {
-                            try to_remove.append(self.allocator, k_ptr.*);
+                if (self.holey) |h| {
+                    if (h.sparse) |*sp| {
+                        var to_remove: std.ArrayListUnmanaged(u32) = .empty;
+                        defer to_remove.deinit(self.allocator);
+                        var it = sp.keyIterator();
+                        while (it.next()) |k_ptr| {
+                            if (k_ptr.* >= new_len) {
+                                try to_remove.append(self.allocator, k_ptr.*);
+                            }
+                        }
+                        for (to_remove.items) |k| {
+                            _ = sp.remove(k);
                         }
                     }
-                    for (to_remove.items) |k| {
-                        _ = sp.remove(k);
-                    }
+                    h.logical_length = new_len;
                 }
-                self.logical_length = new_len;
             } else if (new_len > cur_len) {
-                self.logical_length = new_len;
-                self.is_holey = true;
+                const h = try self.ensureHoley();
+                h.logical_length = new_len;
+                h.is_holey = true;
             }
         }
 
@@ -259,21 +339,25 @@ pub fn ZArray(comptime T: type) type {
 
         /// Get optional item at index: returns null for holes or out-of-bounds.
         pub fn getOpt(self: *const Self, index: usize) ?T {
-            if (!self.is_holey and self.sparse == null) {
+            const h = self.holey orelse {
+                if (index < self.items.items.len) return self.items.items[index];
+                return null;
+            };
+            if (!h.is_holey and h.sparse == null) {
                 if (index < self.items.items.len) return self.items.items[index];
                 return null;
             }
             if (index >= self.length()) return null;
-            if (self.sparse) |*sp| {
+            if (h.sparse) |*sp| {
                 if (index <= std.math.maxInt(u32)) {
                     if (sp.get(@intCast(index))) |val| return val;
                 }
             }
             if (index < self.items.items.len) {
                 const word_idx = index >> 6;
-                if (word_idx < self.hole_mask.items.len) {
+                if (word_idx < h.hole_mask.items.len) {
                     const mask = @as(u64, 1) << @intCast(index & 63);
-                    if ((self.hole_mask.items[word_idx] & mask) != 0) return null;
+                    if ((h.hole_mask.items[word_idx] & mask) != 0) return null;
                 }
                 return self.items.items[index];
             }
@@ -283,7 +367,7 @@ pub fn ZArray(comptime T: type) type {
         /// Get item at index. Fast path reads items.items[index] directly when dense;
         /// returns default/undefined for out-of-bounds or holes.
         pub fn get(self: *const Self, index: usize) T {
-            if (!self.is_holey and self.sparse == null) {
+            if (self.holey == null) {
                 if (index < self.items.items.len) return self.items.items[index];
                 return defaultElement();
             }
@@ -295,14 +379,13 @@ pub fn ZArray(comptime T: type) type {
             if (index >= std.math.maxInt(u32)) {
                 return ZArrayError.IndexOutOfBounds;
             }
-            if (!self.is_holey and self.sparse == null) {
+            if (self.holey == null) {
                 if (index < self.items.items.len) {
                     self.items.items[index] = value;
                     return;
                 }
-                if (index == self.items.items.len and self.logical_length <= self.items.items.len) {
+                if (index == self.items.items.len) {
                     try self.items.append(self.allocator, value);
-                    self.logical_length = @intCast(self.items.items.len);
                     return;
                 }
             }
@@ -310,63 +393,70 @@ pub fn ZArray(comptime T: type) type {
             if (index < self.items.items.len) {
                 self.items.items[index] = value;
                 self.clearHoleBit(index);
-                if (self.sparse) |*sp| {
-                    _ = sp.remove(@intCast(index));
-                }
-                if (index + 1 > self.logical_length) {
-                    self.logical_length = @intCast(index + 1);
+                if (self.holey) |h| {
+                    if (h.sparse) |*sp| {
+                        _ = sp.remove(@intCast(index));
+                    }
+                    if (index + 1 > h.logical_length) {
+                        h.logical_length = @intCast(index + 1);
+                    }
                 }
                 return;
             }
 
-            if (self.sparse == null and index == self.items.items.len) {
+            if ((self.holey == null or self.holey.?.sparse == null) and index == self.items.items.len) {
                 try self.items.append(self.allocator, value);
-                if (self.is_holey) {
-                    try self.ensureHoleMaskCapacity(self.items.items.len);
-                    self.clearHoleBit(index);
-                }
-                if (index + 1 > self.logical_length) {
-                    self.logical_length = @intCast(index + 1);
+                if (self.holey) |h| {
+                    if (h.is_holey) {
+                        try self.ensureHoleMaskCapacity(self.items.items.len);
+                        self.clearHoleBit(index);
+                    }
+                    if (index + 1 > h.logical_length) {
+                        h.logical_length = @intCast(index + 1);
+                    }
                 }
                 return;
             }
 
-            if (self.sparse == null and index <= self.items.items.len + MAX_DENSE_GAP) {
+            if ((self.holey == null or self.holey.?.sparse == null) and index <= self.items.items.len + MAX_DENSE_GAP) {
                 const start_hole = self.items.items.len;
                 const hole_count = index - start_hole;
                 try self.items.ensureTotalCapacity(self.allocator, index + 1);
-                var h: usize = 0;
-                while (h < hole_count) : (h += 1) {
+                var i: usize = 0;
+                while (i < hole_count) : (i += 1) {
                     self.items.appendAssumeCapacity(defaultElement());
                 }
                 self.items.appendAssumeCapacity(value);
+                const h = try self.ensureHoley();
                 try self.ensureHoleMaskCapacity(self.items.items.len);
                 var pos = start_hole;
                 while (pos < index) : (pos += 1) {
-                    self.hole_mask.items[pos >> 6] |= (@as(u64, 1) << @intCast(pos & 63));
+                    h.hole_mask.items[pos >> 6] |= (@as(u64, 1) << @intCast(pos & 63));
                 }
                 self.clearHoleBit(index);
-                self.is_holey = true;
-                if (index + 1 > self.logical_length) {
-                    self.logical_length = @intCast(index + 1);
+                h.is_holey = true;
+                if (index + 1 > h.logical_length) {
+                    h.logical_length = @intCast(index + 1);
                 }
                 return;
             }
 
-            if (self.sparse == null) {
-                self.sparse = std.AutoHashMap(u32, T).init(self.allocator);
+            const h = try self.ensureHoley();
+            if (h.sparse == null) {
+                h.sparse = std.AutoHashMap(u32, T).init(self.allocator);
             }
-            try self.sparse.?.put(@intCast(index), value);
-            self.is_holey = true;
-            if (index + 1 > self.logical_length) {
-                self.logical_length = @intCast(index + 1);
+            try h.sparse.?.put(@intCast(index), value);
+            h.is_holey = true;
+            if (index + 1 > h.logical_length) {
+                h.logical_length = @intCast(index + 1);
             }
         }
 
         /// Delete element at index (marks as HOLE in items or removes from sparse, sets is_holey = true)
         pub fn delete(self: *Self, index: usize) void {
             if (index >= self.length()) return;
-            if (self.sparse) |*sp| {
+            const h = self.ensureHoley() catch return;
+            if (h.sparse) |*sp| {
                 if (index <= std.math.maxInt(u32)) {
                     _ = sp.remove(@intCast(index));
                 }
@@ -375,7 +465,7 @@ pub fn ZArray(comptime T: type) type {
                 self.items.items[index] = defaultElement();
                 self.markHoleBit(index) catch {};
             }
-            self.is_holey = true;
+            h.is_holey = true;
         }
 
         /// Get the underlying slice
@@ -391,12 +481,11 @@ pub fn ZArray(comptime T: type) type {
         /// Clear all elements
         pub fn clear(self: *Self) void {
             self.items.clearRetainingCapacity();
-            self.hole_mask.clearRetainingCapacity();
-            if (self.sparse) |*sp| {
-                sp.clearRetainingCapacity();
+            if (self.holey) |h| {
+                h.deinit(self.allocator);
+                self.allocator.destroy(h);
+                self.holey = null;
             }
-            self.logical_length = 0;
-            self.is_holey = false;
         }
 
         /// Clone the array
@@ -404,16 +493,22 @@ pub fn ZArray(comptime T: type) type {
             var new_array = Self.init(self.allocator);
             errdefer new_array.deinit();
             try new_array.items.appendSlice(self.allocator, self.items.items);
-            if (self.hole_mask.items.len > 0) {
-                try new_array.hole_mask.appendSlice(self.allocator, self.hole_mask.items);
+            if (self.holey) |h| {
+                const new_h = try self.allocator.create(HoleyState);
+                new_h.* = .{
+                    .logical_length = h.logical_length,
+                    .is_holey = h.is_holey,
+                    .length_writable = h.length_writable,
+                    .has_element_descriptors = h.has_element_descriptors,
+                };
+                new_array.holey = new_h;
+                if (h.hole_mask.items.len > 0) {
+                    try new_h.hole_mask.appendSlice(self.allocator, h.hole_mask.items);
+                }
+                if (h.sparse) |*sp| {
+                    new_h.sparse = try sp.clone();
+                }
             }
-            if (self.sparse) |*sp| {
-                new_array.sparse = try sp.clone();
-            }
-            new_array.logical_length = self.logical_length;
-            new_array.is_holey = self.is_holey;
-            new_array.length_writable = self.length_writable;
-            new_array.has_element_descriptors = self.has_element_descriptors;
             return new_array;
         }
 

@@ -55,7 +55,7 @@ pub fn ManipulationMethods(comptime T: type) type {
             splicer: {
                 if (self.items.items.len == 0 and start == 0) {
                     try self.items.appendSlice(self.allocator, items_to_insert);
-                    self.logical_length = @intCast(self.items.items.len);
+                    if (self.holey) |h| h.logical_length = @intCast(self.items.items.len);
                     break :splicer;
                 }
 
@@ -80,7 +80,7 @@ pub fn ManipulationMethods(comptime T: type) type {
                         self.allocator,
                         self.items.items[actual_start..][0..actual_delete],
                     );
-                    deleted.logical_length = @intCast(deleted.items.items.len);
+                    if (deleted.holey) |h| h.logical_length = @intCast(deleted.items.items.len);
                 }
 
                 // Perform splice operation
@@ -90,7 +90,7 @@ pub fn ManipulationMethods(comptime T: type) type {
                     actual_delete,
                     items_to_insert,
                 );
-                self.logical_length = @intCast(self.items.items.len);
+                if (self.holey) |h| h.logical_length = @intCast(self.items.items.len);
             }
 
             return deleted;
@@ -332,7 +332,7 @@ pub fn ManipulationMethods(comptime T: type) type {
                 return ZArrayError.IndexOutOfBounds;
             }
             const v = self.items.orderedRemove(index);
-            self.logical_length = @intCast(self.items.items.len);
+            if (self.holey) |h| h.logical_length = @intCast(self.items.items.len);
             return v;
         }
 
@@ -342,7 +342,7 @@ pub fn ManipulationMethods(comptime T: type) type {
                 return ZArrayError.IndexOutOfBounds;
             }
             const v = self.items.swapRemove(index);
-            self.logical_length = @intCast(self.items.items.len);
+            if (self.holey) |h| h.logical_length = @intCast(self.items.items.len);
             return v;
         }
 
@@ -352,13 +352,13 @@ pub fn ManipulationMethods(comptime T: type) type {
                 return ZArrayError.IndexOutOfBounds;
             }
             try self.items.insert(self.allocator, index, value);
-            self.logical_length = @intCast(self.items.items.len);
+            if (self.holey) |h| h.logical_length = @intCast(self.items.items.len);
         }
 
         /// Extend array with slice
         pub fn extend(self: *Self, slc: []const T) !void {
             try self.items.appendSlice(self.allocator, slc);
-            self.logical_length = @intCast(self.items.items.len);
+            if (self.holey) |h| h.logical_length = @intCast(self.items.items.len);
         }
 
         /// Remove duplicates while preserving order using labeled switch

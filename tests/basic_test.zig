@@ -243,12 +243,13 @@ test "E2 dense array fast path and OOB" {
     var arr = try ZArray(i32).fromSlice(testing.allocator, &slice);
     defer arr.deinit();
 
-    try testing.expect(!arr.is_holey);
-    try testing.expect(arr.sparse == null);
+    try testing.expect(!arr.isHoley());
+    try testing.expect(!arr.isSparse());
     try testing.expectEqual(@as(i32, 1), arr.get(0));
     try testing.expectEqual(@as(?i32, 1), arr.getOpt(0));
     try testing.expectEqual(@as(i32, 0), arr.get(3));
     try testing.expectEqual(@as(?i32, null), arr.getOpt(3));
+    try testing.expect(@sizeOf(ZArray(i32)) <= 56);
 }
 
 test "E2 simple hole [1, , 3]" {
@@ -258,8 +259,8 @@ test "E2 simple hole [1, , 3]" {
     try arr.set(0, 1);
     try arr.set(2, 3);
 
-    try testing.expect(arr.is_holey);
-    try testing.expect(arr.sparse == null);
+    try testing.expect(arr.isHoley());
+    try testing.expect(!arr.isSparse());
     try testing.expectEqual(@as(usize, 3), arr.length());
     try testing.expectEqual(@as(i32, 1), arr.get(0));
     try testing.expect(!arr.isHole(0));
@@ -274,9 +275,9 @@ test "E2 delete marks hole" {
     var arr = try ZArray(i32).fromSlice(testing.allocator, &slice);
     defer arr.deinit();
 
-    try testing.expect(!arr.is_holey);
+    try testing.expect(!arr.isHoley());
     arr.delete(0);
-    try testing.expect(arr.is_holey);
+    try testing.expect(arr.isHoley());
     try testing.expect(arr.isHole(0));
     try testing.expectEqual(@as(?i32, null), arr.getOpt(0));
     try testing.expectEqual(@as(i32, 0), arr.get(0));
@@ -289,8 +290,8 @@ test "E2 sparse array degradation for index > len + 1024" {
     defer arr.deinit();
 
     try arr.set(100_000, 1);
-    try testing.expect(arr.is_holey);
-    try testing.expect(arr.sparse != null);
+    try testing.expect(arr.isHoley());
+    try testing.expect(arr.isSparse());
     try testing.expectEqual(@as(usize, 0), arr.items.items.len);
     try testing.expectEqual(@as(usize, 100_001), arr.length());
     try testing.expect(arr.isHole(0));
@@ -301,13 +302,13 @@ test "E2 sparse array degradation for index > len + 1024" {
 }
 
 test "E2 logical_length Array(1e7) without allocating 1e7 slots" {
-    var arr = ZArray(i32).initWithLength(testing.allocator, 10_000_000);
+    var arr = try ZArray(i32).initWithLength(testing.allocator, 10_000_000);
     defer arr.deinit();
 
     try testing.expectEqual(@as(usize, 10_000_000), arr.length());
     try testing.expectEqual(@as(usize, 0), arr.items.items.len);
     try testing.expectEqual(@as(usize, 0), arr.capacity());
-    try testing.expect(arr.is_holey);
+    try testing.expect(arr.isHoley());
     try testing.expect(arr.isHole(0));
     try testing.expect(arr.isHole(9_999_999));
 

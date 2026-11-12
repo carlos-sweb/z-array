@@ -9,9 +9,8 @@ pub fn BasicMethods(comptime T: type) type {
         /// ECMAScript push() - Add one or more elements to the end
         /// Returns the new length of the array
         pub fn push(self: *Self, value: T) !usize {
-            if (!self.is_holey and self.sparse == null and self.logical_length == self.items.items.len) {
+            if (self.holey == null) {
                 try self.items.append(self.allocator, value);
-                self.logical_length = @intCast(self.items.items.len);
                 return self.items.items.len;
             }
             const idx = self.length();
@@ -21,9 +20,8 @@ pub fn BasicMethods(comptime T: type) type {
 
         /// Push multiple values at once
         pub fn pushMany(self: *Self, values: []const T) !usize {
-            if (!self.is_holey and self.sparse == null and self.logical_length == self.items.items.len) {
+            if (self.holey == null) {
                 try self.items.appendSlice(self.allocator, values);
-                self.logical_length = @intCast(self.items.items.len);
                 return self.items.items.len;
             }
             for (values) |v| _ = try self.push(v);
@@ -32,38 +30,50 @@ pub fn BasicMethods(comptime T: type) type {
 
         /// ECMAScript pop() - Remove and return the last element
         pub fn pop(self: *Self) ?T {
-            if (self.items.items.len == 0) {
-                if (self.logical_length > 0) self.logical_length -= 1;
-                return null;
+            if (self.holey) |h| {
+                if (self.items.items.len == 0) {
+                    if (h.logical_length > 0) h.logical_length -= 1;
+                    return null;
+                }
+                const v = self.items.pop();
+                h.logical_length = @intCast(self.items.items.len);
+                return v;
             }
-            const v = self.items.pop();
-            self.logical_length = @intCast(self.items.items.len);
-            return v;
+            if (self.items.items.len == 0) return null;
+            return self.items.pop();
         }
 
         /// ECMAScript shift() - Remove and return the first element
         pub fn shift(self: *Self) ?T {
-            if (self.items.items.len == 0) {
-                if (self.logical_length > 0) self.logical_length -= 1;
-                return null;
+            if (self.holey) |h| {
+                if (self.items.items.len == 0) {
+                    if (h.logical_length > 0) h.logical_length -= 1;
+                    return null;
+                }
+                const v = self.items.orderedRemove(0);
+                h.logical_length = @intCast(self.items.items.len);
+                return v;
             }
-            const v = self.items.orderedRemove(0);
-            self.logical_length = @intCast(self.items.items.len);
-            return v;
+            if (self.items.items.len == 0) return null;
+            return self.items.orderedRemove(0);
         }
 
         /// ECMAScript unshift() - Add one or more elements to the beginning
         /// Returns the new length
         pub fn unshift(self: *Self, value: T) !usize {
             try self.items.insert(self.allocator, 0, value);
-            self.logical_length = @intCast(self.items.items.len);
+            if (self.holey) |h| {
+                h.logical_length = @intCast(self.items.items.len);
+            }
             return self.items.items.len;
         }
 
         /// Unshift multiple values at once
         pub fn unshiftMany(self: *Self, values: []const T) !usize {
             try self.items.insertSlice(self.allocator, 0, values);
-            self.logical_length = @intCast(self.items.items.len);
+            if (self.holey) |h| {
+                h.logical_length = @intCast(self.items.items.len);
+            }
             return self.items.items.len;
         }
 
