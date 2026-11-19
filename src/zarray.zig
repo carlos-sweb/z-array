@@ -135,7 +135,7 @@ pub fn ZArray(comptime T: type) type {
 
         inline fn defaultElement() T {
             const info = @typeInfo(T);
-            if (info == .@"union" and @hasDecl(T, "UNDEFINED")) {
+            if ((info == .@"struct" or info == .@"union") and @hasDecl(T, "UNDEFINED")) {
                 return T.UNDEFINED;
             }
             return switch (info) {
